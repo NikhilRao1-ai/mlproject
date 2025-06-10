@@ -1,0 +1,26 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Job Classifier and Recommender</title>
+</head>
+<body>
+    <h1>Job Classifier and Recommender</h1>
+    {% if error %}
+        <p style="color: red;">{{ error }}</p>
+    {% endif %}
+    <h2>Classify a Job Posting</h2>
+    <form action="/classify_form" method="post">
+        <label for="job_description">Job Description:</label><br>
+        <textarea id="job_description" name="job_description" rows="10" cols="50">{{ request.form.get('job_description', '') }}</textarea><br>
+        <input type="submit" value="Classify">
+    </form>
+    <h2>Get Job Recommendations</h2>
+    <form action="/recommend" method="post">
+        <label for="resume">Resume:</label><br>
+        <textarea id="resume" name="resume" rows="10" cols="50">{{ request.form.get('resume', '') }}</textarea><br>
+        <input type="submit" value="Submit">
+    </form>
+    <p><a href="/">Simple Classification Interface</a></p>
+</body>
+</html>
