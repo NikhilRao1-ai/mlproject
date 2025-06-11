@@ -9,7 +9,7 @@ from sklearn.metrics import classification_report, precision_score, recall_score
 from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Embedding, Conv1D, GlobalMaxPooling1D, Dense, Dropout, LSTM
+from tensorflow.keras.layers import Embedding, Conv1D, GlobalMaxPooling1D, Dense, Dropout
 from tensorflow.keras.utils import to_categorical
 from tensorflow.keras.callbacks import EarlyStopping
 from sklearn.preprocessing import LabelEncoder
@@ -166,7 +166,6 @@ class JobMatcher:
         y = to_categorical(y, num_classes=self.num_classes)
         
         X_train, X_test, y_train, y_test = train_test_split(job_padded, y, test_size=0.2, random_state=42)
-        # Ensure test set has enough samples
         logger.info(f"Training samples: {len(X_train)}, Test samples: {len(X_test)}")
         
         self.cnn_model = self.build_cnn_model(self.num_classes, len(self.tokenizer.word_index) + 1)
@@ -186,7 +185,6 @@ class JobMatcher:
         logger.info("\n📊 Classification Report:")
         logger.info(classification_report(y_test_classes, y_pred_classes, target_names=self.label_encoder.classes_, zero_division=0))
         
-        # Store metrics for display
         self.classification_metrics = {
             'precision': round(report['weighted avg']['precision'], 2),
             'recall': round(report['weighted avg']['recall'], 2),
@@ -224,7 +222,6 @@ class JobMatcher:
         f1 = f1_score(y_test, y_pred, zero_division=0)
         logger.info(f"Recommendation Metrics: Precision={precision:.2f}, Recall={recall:.2f}, F1-Score={f1:.2f}")
         
-        # Store metrics for display
         self.recommendation_metrics = {
             'precision': round(precision, 2),
             'recall': round(recall, 2),
@@ -273,7 +270,6 @@ class JobMatcher:
                     self.tokenizer = joblib.load(f)
             except Exception as e:
                 logger.error(f"Error loading matching model: {e}")
-                # Fallback to cosine similarity if matching model fails to load
                 job_padded = self.preprocess_text(job_description)
                 resume_padded = self.preprocess_text(resume)
                 from sklearn.metrics.pairwise import cosine_similarity
@@ -585,7 +581,7 @@ if __name__ == "__main__":
         job_df = matcher.load_data()
     if not job_df.empty:
         matcher.train_classifier(job_df)
-    matcher.train_matching()  # Train the matching model
+    matcher.train_matching()
     from waitress import serve
     logger.info("Starting Waitress server on 0.0.0.0:5000")
     serve(app, host='0.0.0.0', port=5000, threads=4)
