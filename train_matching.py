@@ -4,6 +4,7 @@ import re
 import string
 import sqlite3
 import os
+import json
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, precision_score, recall_score, f1_score
 from tensorflow.keras.preprocessing.text import Tokenizer
@@ -44,6 +45,8 @@ class JobMatcher:
         self.matching_model_path = '/tmp/matching_model.keras'
         self.tokenizer_path = '/tmp/tokenizer.pkl'
         self.encoder_path = '/tmp/label_encoder.pkl'
+        self.classification_metrics_path = '/tmp/classification_metrics.json'
+        self.recommendation_metrics_path = '/tmp/recommendation_metrics.json'
         self.job_listings = [
             ("Software Engineer position requiring Python and machine learning skills.", "IT"),
             ("Data Scientist role needing TensorFlow expertise.", "IT"),
@@ -56,7 +59,6 @@ class JobMatcher:
             ("Doctor needed for hospital with 5 years of experience.", "Healthcare")
         ]
         self.resume_job_pairs = [
-            # Positive matches (label=1)
             ("Python developer with 3 years experience in machine learning.", 
              "Software Engineer position requiring Python and machine learning skills.", 1),
             ("Experienced in SEO and digital marketing strategies.", 
@@ -77,7 +79,6 @@ class JobMatcher:
              "Marketing Manager needed with experience in SEO.", 1),
             ("Full stack developer with experience in Node.js and React.", 
              "Web Developer role requiring JavaScript and React.", 1),
-            # Negative matches (label=0)
             ("Python developer with 3 years experience in machine learning.", 
              "Marketing Manager needed with experience in SEO.", 0),
             ("Experienced in SEO and digital marketing strategies.", 
@@ -101,6 +102,180 @@ class JobMatcher:
         ]
         self.classification_metrics = None
         self.recommendation_metrics = None
+        self.load_metrics()
+        # Initialize sample jobs here to ensure they're available
+        self.sample_jobs = pd.DataFrame({
+            'job_title': [
+                'Software Engineer', 'Data Scientist', 'Web Developer', 'DevOps Engineer', 'AI Researcher',
+                'Cybersecurity Analyst', 'Database Administrator', 'Cloud Architect', 'Mobile App Developer', 'Systems Analyst',
+                'Machine Learning Engineer', 'Full Stack Developer', 'Network Engineer', 'QA Engineer', 'Data Analyst',
+                'IT Project Manager', 'Blockchain Developer', 'Game Developer', 'Embedded Systems Engineer', 'IT Consultant',
+                'Backend Developer', 'Frontend Developer', 'Security Engineer', 'Data Engineer', 'Site Reliability Engineer',
+                'AI Product Manager', 'Tech Lead', 'Software Architect', 'IoT Developer', 'API Developer',
+                'Marketing Specialist', 'Content Creator', 'SEO Analyst', 'Brand Manager', 'Digital Marketer',
+                'Social Media Manager', 'Public Relations Specialist', 'Market Research Analyst', 'Advertising Manager', 'Copywriter',
+                'Graphic Designer', 'Email Marketing Specialist', 'Content Strategist', 'Event Planner', 'Influencer Marketing Manager',
+                'Product Marketing Manager', 'Marketing Coordinator', 'Media Buyer', 'Creative Director', 'UX Researcher',
+                'Digital Strategist', 'SEO Manager', 'PPC Specialist', 'Marketing Analyst', 'Brand Strategist',
+                'Social Media Analyst', 'Campaign Manager', 'Content Marketing Manager', 'Growth Marketer', 'E-commerce Specialist',
+                'Registered Nurse', 'Physical Therapist', 'Medical Assistant', 'Pharmacist', 'Surgeon',
+                'Emergency Room Nurse', 'Pediatrician', 'Radiologist', 'Anesthesiologist', 'Clinical Laboratory Technician',
+                'Occupational Therapist', 'Speech-Language Pathologist', 'Dental Hygienist', 'Paramedic', 'Cardiologist',
+                'Psychiatrist', 'Nurse Practitioner', 'Health Informatics Specialist', 'Medical Social Worker', 'Orthopedic Surgeon',
+                'General Practitioner', 'Oncologist', 'Neurologist', 'Dermatologist', 'Physician Assistant',
+                'Respiratory Therapist', 'Dietitian', 'Medical Technologist', 'Chiropractor', 'Epidemiologist'
+            ],
+            'job_description': [
+                'Develop software applications using Python and Java.',
+                'Build machine learning models with TensorFlow and PyTorch.',
+                'Create responsive websites using JavaScript and React.',
+                'Manage cloud infrastructure with AWS and Docker.',
+                'Research advanced AI algorithms and neural networks.',
+                'Protect systems from cyber threats and conduct penetration testing.',
+                'Manage and optimize SQL and NoSQL databases.',
+                'Design scalable cloud solutions on Azure and GCP.',
+                'Build iOS and Android apps using Swift and Kotlin.',
+                'Analyze business systems and recommend IT solutions.',
+                'Design and deploy ML models for predictive analytics.',
+                'Develop front-end and back-end web applications.',
+                'Configure and maintain network infrastructure.',
+                'Test software to ensure quality and reliability.',
+                'Analyze data using Python and SQL to generate insights.',
+                'Lead IT projects and coordinate teams.',
+                'Develop decentralized applications using Ethereum.',
+                'Create video games using Unity and C#.',
+                'Program embedded systems for IoT devices.',
+                'Provide IT consulting services to optimize business processes.',
+                'Build server-side applications with Node.js and Express.',
+                'Design user interfaces with React and Tailwind CSS.',
+                'Implement security protocols to protect data.',
+                'Create data pipelines using Apache Spark.',
+                'Ensure system reliability with monitoring tools.',
+                'Manage AI product development lifecycle.',
+                'Lead technical teams on software projects.',
+                'Design software architecture for scalability.',
+                'Develop IoT solutions with MQTT protocols.',
+                'Build and maintain RESTful APIs.',
+                'Manage social media campaigns and branding strategies.',
+                'Produce engaging content for blogs and social media.',
+                'Optimize websites for search engine rankings.',
+                'Develop brand strategies for product launches.',
+                'Create and manage digital ad campaigns.',
+                'Oversee social media platforms and engagement.',
+                'Handle media relations and corporate communications.',
+                'Conduct surveys and analyze consumer trends.',
+                'Plan and execute advertising campaigns.',
+                'Write compelling copy for marketing materials.',
+                'Design visual content using Adobe Creative Suite.',
+                'Develop email marketing campaigns to boost engagement.',
+                'Plan content strategies for brand consistency.',
+                'Organize corporate events and conferences.',
+                'Collaborate with influencers to promote products.',
+                'Market products to target audiences.',
+                'Support marketing campaigns and logistics.',
+                'Purchase advertising space for campaigns.',
+                'Lead creative projects and teams.',
+                'Conduct user research to improve product design.',
+                'Plan digital strategies for online presence.',
+                'Manage SEO efforts to improve rankings.',
+                'Run pay-per-click campaigns on Google Ads.',
+                'Analyze marketing data for insights.',
+                'Develop strategies for brand positioning.',
+                'Analyze social media performance metrics.',
+                'Manage marketing campaigns end-to-end.',
+                'Create content for marketing funnels.',
+                'Drive growth through digital channels.',
+                'Optimize e-commerce marketing strategies.',
+                'Provide patient care in hospital settings.',
+                'Assist patients with physical rehabilitation programs.',
+                'Support physicians in clinical and administrative tasks.',
+                'Dispense medications and counsel patients.',
+                'Perform surgical procedures in operating rooms.',
+                'Provide critical care in emergency departments.',
+                'Diagnose and treat children’s illnesses.',
+                'Interpret medical imaging for diagnoses.',
+                'Administer anesthesia during surgeries.',
+                'Analyze biological samples in labs.',
+                'Help patients improve daily living skills.',
+                'Treat communication and swallowing disorders.',
+                'Clean teeth and educate patients on oral health.',
+                'Provide emergency medical care in ambulances.',
+                'Diagnose and treat heart conditions.',
+                'Treat mental health disorders with therapy and medication.',
+                'Provide primary care as an advanced practice nurse.',
+                'Manage healthcare data and IT systems.',
+                'Support patients and families with social services.',
+                'Perform surgeries on bones and joints.',
+                'Provide general medical care to patients.',
+                'Treat cancer patients with specialized care.',
+                'Diagnose and treat neurological disorders.',
+                'Treat skin conditions and perform procedures.',
+                'Assist physicians and provide patient care.',
+                'Treat patients with breathing disorders.',
+                'Provide nutritional counseling to patients.',
+                'Perform diagnostic tests in medical labs.',
+                'Treat patients with spinal adjustments.',
+                'Study disease patterns and public health trends.'
+            ],
+            'category': [
+                'IT', 'IT', 'IT', 'IT', 'IT',
+                'IT', 'IT', 'IT', 'IT', 'IT',
+                'IT', 'IT', 'IT', 'IT', 'IT',
+                'IT', 'IT', 'IT', 'IT', 'IT',
+                'IT', 'IT', 'IT', 'IT', 'IT',
+                'IT', 'IT', 'IT', 'IT', 'IT',
+                'Marketing', 'Marketing', 'Marketing', 'Marketing', 'Marketing',
+                'Marketing', 'Marketing', 'Marketing', 'Marketing', 'Marketing',
+                'Marketing', 'Marketing', 'Marketing', 'Marketing', 'Marketing',
+                'Marketing', 'Marketing', 'Marketing', 'Marketing', 'Marketing',
+                'Marketing', 'Marketing', 'Marketing', 'Marketing', 'Marketing',
+                'Marketing', 'Marketing', 'Marketing', 'Marketing', 'Marketing',
+                'Healthcare', 'Healthcare', 'Healthcare', 'Healthcare', 'Healthcare',
+                'Healthcare', 'Healthcare', 'Healthcare', 'Healthcare', 'Healthcare',
+                'Healthcare', 'Healthcare', 'Healthcare', 'Healthcare', 'Healthcare',
+                'Healthcare', 'Healthcare', 'Healthcare', 'Healthcare', 'Healthcare',
+                'Healthcare', 'Healthcare', 'Healthcare', 'Healthcare', 'Healthcare',
+                'Healthcare', 'Healthcare', 'Healthcare', 'Healthcare', 'Healthcare'
+            ]
+        })
+
+    def load_metrics(self):
+        try:
+            if os.path.exists(self.classification_metrics_path):
+                with open(self.classification_metrics_path, 'r') as f:
+                    self.classification_metrics = json.load(f)
+                logger.info(f"Loaded classification metrics: {self.classification_metrics}")
+        except Exception as e:
+            logger.error(f"Error loading classification metrics: {e}")
+            self.classification_metrics = None
+
+        try:
+            if os.path.exists(self.recommendation_metrics_path):
+                with open(self.recommendation_metrics_path, 'r') as f:
+                    self.recommendation_metrics = json.load(f)
+                logger.info(f"Loaded recommendation metrics: {self.recommendation_metrics}")
+        except Exception as e:
+            logger.error(f"Error loading recommendation metrics: {e}")
+            self.recommendation_metrics = None
+
+    def save_metrics(self):
+        if self.classification_metrics is not None:
+            try:
+                os.makedirs(os.path.dirname(self.classification_metrics_path), exist_ok=True)
+                with open(self.classification_metrics_path, 'w') as f:
+                    json.dump(self.classification_metrics, f)
+                logger.info(f"Saved classification metrics to {self.classification_metrics_path}")
+            except Exception as e:
+                logger.error(f"Error saving classification metrics: {e}")
+
+        if self.recommendation_metrics is not None:
+            try:
+                os.makedirs(os.path.dirname(self.recommendation_metrics_path), exist_ok=True)
+                with open(self.recommendation_metrics_path, 'w') as f:
+                    json.dump(self.recommendation_metrics, f)
+                logger.info(f"Saved recommendation metrics to {self.recommendation_metrics_path}")
+            except Exception as e:
+                logger.error(f"Error saving recommendation metrics: {e}")
 
     def clean_text(self, text):
         if not isinstance(text, str) or not text.strip():
@@ -112,20 +287,24 @@ class JobMatcher:
         return text
 
     def initialize_db(self):
-        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS jobs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                job_title TEXT,
-                job_description TEXT,
-                category TEXT,
-                clean_desc TEXT
-            )
-        ''')
-        conn.commit()
-        conn.close()
+        try:
+            os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS jobs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    job_title TEXT,
+                    job_description TEXT,
+                    category TEXT,
+                    clean_desc TEXT
+                )
+            ''')
+            conn.commit()
+            conn.close()
+            logger.info("Database initialized successfully")
+        except Exception as e:
+            logger.error(f"Error initializing database: {e}")
 
     def load_data(self):
         try:
@@ -222,6 +401,7 @@ class JobMatcher:
         }
         logger.info(f"Classification metrics: {self.classification_metrics}")
         self.save_model()
+        self.save_metrics()
 
     def train_matching(self):
         logger.info("Starting train_matching")
@@ -264,12 +444,20 @@ class JobMatcher:
         }
         logger.info(f"Recommendation metrics: {self.recommendation_metrics}")
         self.matching_model.save(self.matching_model_path)
+        self.save_metrics()
 
     def save_model(self):
-        os.makedirs(os.path.dirname(self.model_path), exist_ok=True)
-        self.cnn_model.save(self.model_path)
-        joblib.dump(self.tokenizer, self.tokenizer_path)
-        joblib.dump(self.label_encoder, self.encoder_path)
+        try:
+            os.makedirs(os.path.dirname(self.model_path), exist_ok=True)
+            self.cnn_model.save(self.model_path)
+            logger.info(f"Saved CNN model to {self.model_path}")
+            joblib.dump(self.tokenizer, self.tokenizer_path)
+            logger.info(f"Saved tokenizer to {self.tokenizer_path}")
+            joblib.dump(self.label_encoder, self.encoder_path)
+            logger.info(f"Saved label encoder to {self.encoder_path}")
+        except Exception as e:
+            logger.error(f"Error saving model: {e}")
+            raise
 
     def preprocess_text(self, text):
         text = self.clean_text(text)
@@ -283,6 +471,10 @@ class JobMatcher:
         return padded
 
     def classify_job(self, description):
+        # Check if model and tokenizer exist, otherwise train
+        if not os.path.exists(self.model_path) or not os.path.exists(self.tokenizer_path) or not os.path.exists(self.encoder_path):
+            logger.info("Model or tokenizer not found, training classifier...")
+            self.train_classifier(self.sample_jobs)
         if not hasattr(self, 'cnn_model') or self.cnn_model is None:
             try:
                 self.cnn_model = tf.keras.models.load_model(self.model_path)
@@ -290,26 +482,34 @@ class JobMatcher:
                     self.tokenizer = joblib.load(f)
                 with open(self.encoder_path, 'rb') as f:
                     self.label_encoder = joblib.load(f)
+                logger.info("Loaded CNN model and tokenizer")
             except Exception as e:
                 logger.error(f"Error loading model or tokenizer: {e}")
-                raise
+                # Retrain if loading fails
+                self.train_classifier(self.sample_jobs)
         job_padded = self.preprocess_text(description)
         prediction = self.cnn_model.predict(job_padded, verbose=0)
         category_id = np.argmax(prediction, axis=1)[0]
         return self.label_encoder.inverse_transform([category_id])[0]
 
     def predict_match(self, job_description, resume):
+        # Check if matching model exists, otherwise train
+        if not os.path.exists(self.matching_model_path) or not os.path.exists(self.tokenizer_path):
+            logger.info("Matching model or tokenizer not found, training matching model...")
+            self.train_matching()
         if not hasattr(self, 'matching_model') or self.matching_model is None:
             try:
                 self.matching_model = tf.keras.models.load_model(self.matching_model_path)
                 with open(self.tokenizer_path, 'rb') as f:
                     self.tokenizer = joblib.load(f)
+                logger.info("Loaded matching model and tokenizer")
             except Exception as e:
                 logger.error(f"Error loading matching model: {e}")
-                job_padded = self.preprocess_text(job_description)
-                resume_padded = self.preprocess_text(resume)
-                from sklearn.metrics.pairwise import cosine_similarity
-                return cosine_similarity(job_padded, resume_padded)[0][0]
+                # Retrain if loading fails
+                self.train_matching()
+                self.matching_model = tf.keras.models.load_model(self.matching_model_path)
+                with open(self.tokenizer_path, 'rb') as f:
+                    self.tokenizer = joblib.load(f)
         job_padded = self.preprocess_text(job_description)
         resume_padded = self.preprocess_text(resume)
         combined_input = np.hstack((job_padded, resume_padded))
@@ -324,7 +524,7 @@ class JobMatcher:
         scores.sort(key=lambda x: x[2], reverse=True)
         return scores[:3]
 
-# Flask routes (Code 2)
+# Flask routes
 @app.route('/', methods=['GET', 'POST'])
 def classify():
     if request.method == 'POST':
@@ -368,7 +568,6 @@ def classify():
         <p><a href="/home">Full Interface</a></p>
     ''')
 
-# Flask routes (Code 1)
 @app.route('/home')
 def home():
     return render_template('index.html')
@@ -401,7 +600,6 @@ def recommend():
         logger.error(f"Recommendation error: {e}")
         return render_template('index.html', error=f"An error occurred: {str(e)}")
 
-# Metrics endpoint
 @app.route('/metrics')
 def metrics():
     if matcher.classification_metrics is None or matcher.recommendation_metrics is None:
@@ -590,162 +788,10 @@ matcher = JobMatcher()
 
 if __name__ == "__main__":
     matcher.initialize_db()
-    job_df = matcher.load_data()
-    if job_df.empty:
-        if os.path.exists('jobs.csv'):
-            logger.info("Loading data from jobs.csv")
-            job_df = pd.read_csv('jobs.csv')
-            matcher.save_data(job_df)
-        else:
-            logger.info("No data found. Initializing with sample data (90 jobs).")
-            sample_jobs = pd.DataFrame({
-                'job_title': [
-                    # IT (30 jobs)
-                    'Software Engineer', 'Data Scientist', 'Web Developer', 'DevOps Engineer', 'AI Researcher',
-                    'Cybersecurity Analyst', 'Database Administrator', 'Cloud Architect', 'Mobile App Developer', 'Systems Analyst',
-                    'Machine Learning Engineer', 'Full Stack Developer', 'Network Engineer', 'QA Engineer', 'Data Analyst',
-                    'IT Project Manager', 'Blockchain Developer', 'Game Developer', 'Embedded Systems Engineer', 'IT Consultant',
-                    'Backend Developer', 'Frontend Developer', 'Security Engineer', 'Data Engineer', 'Site Reliability Engineer',
-                    'AI Product Manager', 'Tech Lead', 'Software Architect', 'IoT Developer', 'API Developer',
-                    # Marketing (30 jobs)
-                    'Marketing Specialist', 'Content Creator', 'SEO Analyst', 'Brand Manager', 'Digital Marketer',
-                    'Social Media Manager', 'Public Relations Specialist', 'Market Research Analyst', 'Advertising Manager', 'Copywriter',
-                    'Graphic Designer', 'Email Marketing Specialist', 'Content Strategist', 'Event Planner', 'Influencer Marketing Manager',
-                    'Product Marketing Manager', 'Marketing Coordinator', 'Media Buyer', 'Creative Director', 'UX Researcher',
-                    'Digital Strategist', 'SEO Manager', 'PPC Specialist', 'Marketing Analyst', 'Brand Strategist',
-                    'Social Media Analyst', 'Campaign Manager', 'Content Marketing Manager', 'Growth Marketer', 'E-commerce Specialist',
-                    # Healthcare (30 jobs)
-                    'Registered Nurse', 'Physical Therapist', 'Medical Assistant', 'Pharmacist', 'Surgeon',
-                    'Emergency Room Nurse', 'Pediatrician', 'Radiologist', 'Anesthesiologist', 'Clinical Laboratory Technician',
-                    'Occupational Therapist', 'Speech-Language Pathologist', 'Dental Hygienist', 'Paramedic', 'Cardiologist',
-                    'Psychiatrist', 'Nurse Practitioner', 'Health Informatics Specialist', 'Medical Social Worker', 'Orthopedic Surgeon',
-                    'General Practitioner', 'Oncologist', 'Neurologist', 'Dermatologist', 'Physician Assistant',
-                    'Respiratory Therapist', 'Dietitian', 'Medical Technologist', 'Chiropractor', 'Epidemiologist'
-                ],
-                'job_description': [
-                    # IT (30 jobs)
-                    'Develop software applications using Python and Java.',
-                    'Build machine learning models with TensorFlow and PyTorch.',
-                    'Create responsive websites using JavaScript and React.',
-                    'Manage cloud infrastructure with AWS and Docker.',
-                    'Research advanced AI algorithms and neural networks.',
-                    'Protect systems from cyber threats and conduct penetration testing.',
-                    'Manage and optimize SQL and NoSQL databases.',
-                    'Design scalable cloud solutions on Azure and GCP.',
-                    'Build iOS and Android apps using Swift and Kotlin.',
-                    'Analyze business systems and recommend IT solutions.',
-                    'Design and deploy ML models for predictive analytics.',
-                    'Develop front-end and back-end web applications.',
-                    'Configure and maintain network infrastructure.',
-                    'Test software to ensure quality and reliability.',
-                    'Analyze data using Python and SQL to generate insights.',
-                    'Lead IT projects and coordinate teams.',
-                    'Develop decentralized applications using Ethereum.',
-                    'Create video games using Unity and C#.',
-                    'Program embedded systems for IoT devices.',
-                    'Provide IT consulting services to optimize business processes.',
-                    'Build server-side applications with Node.js and Express.',
-                    'Design user interfaces with React and Tailwind CSS.',
-                    'Implement security protocols to protect data.',
-                    'Create data pipelines using Apache Spark.',
-                    'Ensure system reliability with monitoring tools.',
-                    'Manage AI product development lifecycle.',
-                    'Lead technical teams on software projects.',
-                    'Design software architecture for scalability.',
-                    'Develop IoT solutions with MQTT protocols.',
-                    'Build and maintain RESTful APIs.',
-                    # Marketing (30 jobs)
-                    'Manage social media campaigns and branding strategies.',
-                    'Produce engaging content for blogs and social media.',
-                    'Optimize websites for search engine rankings.',
-                    'Develop brand strategies for product launches.',
-                    'Create and manage digital ad campaigns.',
-                    'Oversee social media platforms and engagement.',
-                    'Handle media relations and corporate communications.',
-                    'Conduct surveys and analyze consumer trends.',
-                    'Plan and execute advertising campaigns.',
-                    'Write compelling copy for marketing materials.',
-                    'Design visual content using Adobe Creative Suite.',
-                    'Develop email marketing campaigns to boost engagement.',
-                    'Plan content strategies for brand consistency.',
-                    'Organize corporate events and conferences.',
-                    'Collaborate with influencers to promote products.',
-                    'Market products to target audiences.',
-                    'Support marketing campaigns and logistics.',
-                    'Purchase advertising space for campaigns.',
-                    'Lead creative projects and teams.',
-                    'Conduct user research to improve product design.',
-                    'Plan digital strategies for online presence.',
-                    'Manage SEO efforts to improve rankings.',
-                    'Run pay-per-click campaigns on Google Ads.',
-                    'Analyze marketing data for insights.',
-                    'Develop strategies for brand positioning.',
-                    'Analyze social media performance metrics.',
-                    'Manage marketing campaigns end-to-end.',
-                    'Create content for marketing funnels.',
-                    'Drive growth through digital channels.',
-                    'Optimize e-commerce marketing strategies.',
-                    # Healthcare (30 jobs)
-                    'Provide patient care in hospital settings.',
-                    'Assist patients with physical rehabilitation programs.',
-                    'Support physicians in clinical and administrative tasks.',
-                    'Dispense medications and counsel patients.',
-                    'Perform surgical procedures in operating rooms.',
-                    'Provide critical care in emergency departments.',
-                    'Diagnose and treat children’s illnesses.',
-                    'Interpret medical imaging for diagnoses.',
-                    'Administer anesthesia during surgeries.',
-                    'Analyze biological samples in labs.',
-                    'Help patients improve daily living skills.',
-                    'Treat communication and swallowing disorders.',
-                    'Clean teeth and educate patients on oral health.',
-                    'Provide emergency medical care in ambulances.',
-                    'Diagnose and treat heart conditions.',
-                    'Treat mental health disorders with therapy and medication.',
-                    'Provide primary care as an advanced practice nurse.',
-                    'Manage healthcare data and IT systems.',
-                    'Support patients and families with social services.',
-                    'Perform surgeries on bones and joints.',
-                    'Provide general medical care to patients.',
-                    'Treat cancer patients with specialized care.',
-                    'Diagnose and treat neurological disorders.',
-                    'Treat skin conditions and perform procedures.',
-                    'Assist physicians and provide patient care.',
-                    'Treat patients with breathing disorders.',
-                    'Provide nutritional counseling to patients.',
-                    'Perform diagnostic tests in medical labs.',
-                    'Treat patients with spinal adjustments.',
-                    'Study disease patterns and public health trends.'
-                ],
-                'category': [
-                    # IT (30 jobs)
-                    'IT', 'IT', 'IT', 'IT', 'IT',
-                    'IT', 'IT', 'IT', 'IT', 'IT',
-                    'IT', 'IT', 'IT', 'IT', 'IT',
-                    'IT', 'IT', 'IT', 'IT', 'IT',
-                    'IT', 'IT', 'IT', 'IT', 'IT',
-                    'IT', 'IT', 'IT', 'IT', 'IT',
-                    # Marketing (30 jobs)
-                    'Marketing', 'Marketing', 'Marketing', 'Marketing', 'Marketing',
-                    'Marketing', 'Marketing', 'Marketing', 'Marketing', 'Marketing',
-                    'Marketing', 'Marketing', 'Marketing', 'Marketing', 'Marketing',
-                    'Marketing', 'Marketing', 'Marketing', 'Marketing', 'Marketing',
-                    'Marketing', 'Marketing', 'Marketing', 'Marketing', 'Marketing',
-                    'Marketing', 'Marketing', 'Marketing', 'Marketing', 'Marketing',
-                    # Healthcare (30 jobs)
-                    'Healthcare', 'Healthcare', 'Healthcare', 'Healthcare', 'Healthcare',
-                    'Healthcare', 'Healthcare', 'Healthcare', 'Healthcare', 'Healthcare',
-                    'Healthcare', 'Healthcare', 'Healthcare', 'Healthcare', 'Healthcare',
-                    'Healthcare', 'Healthcare', 'Healthcare', 'Healthcare', 'Healthcare',
-                    'Healthcare', 'Healthcare', 'Healthcare', 'Healthcare', 'Healthcare',
-                    'Healthcare', 'Healthcare', 'Healthcare', 'Healthcare', 'Healthcare'
-                ]
-            })
-            matcher.save_data(sample_jobs)
-        job_df = matcher.load_data()
-    if not job_df.empty:
-        matcher.train_classifier(job_df)
+    # Always train models on startup to ensure they're available
+    logger.info("Training models on startup...")
+    matcher.train_classifier(matcher.sample_jobs)
     matcher.train_matching()
     from waitress import serve
-    logger.info("Starting Waitress server on 0.0.0.0:5000")
-    serve(app, host='0.0.0.0', port=5000, threads=4)
+    logger.info("Starting Waitress server on 0.0.0.0:10000")
+    serve(app, host='0.0.0.0', port=10000, threads=4)

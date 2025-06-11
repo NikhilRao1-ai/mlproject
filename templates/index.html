@@ -1,27 +1,44 @@
 
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Job Classifier and Recommender</title>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-    <h1>Job Classifier and Recommender</h1>
-    {% if error %}
-        <p style="color: red;">{{ error }}</p>
-    {% endif %}
-    <h2>Classify a Job Posting</h2>
-    <form action="/classify_form" method="post">
-        <label for="job_description">Job Description:</label><br>
-        <textarea id="job_description" name="job_description" rows="10" cols="50">{{ request.form.get('job_description', '') }}</textarea><br>
-        <input type="submit" value="Classify">
-    </form>
-    <h2>Get Job Recommendations</h2>
-    <form action="/recommend" method="post">
-        <label for="resume">Resume:</label><br>
-        <textarea id="resume" name="resume" rows="10" cols="50">{{ request.form.get('resume', '') }}</textarea><br>
-        <input type="submit" value="Submit">
-    </form>
-    <p><a href="/">Simple Classification Interface</a></p>
-    <p><a href="/metrics">View Metrics</a></p>
+<body class="min-h-screen bg-gradient-to-r from-blue-500 to-purple-600 flex flex-col items-center justify-center p-6">
+    <nav class="w-full max-w-4xl bg-white shadow-lg rounded-lg p-4 mb-6">
+        <div class="flex justify-between items-center">
+            <h1 class="text-2xl font-bold text-gray-800">Job Matcher Tool</h1>
+            <div class="space-x-4">
+                <a href="/home" class="text-blue-600 hover:text-blue-800 font-medium">Home</a>
+                <a href="/#classify" class="text-blue-600 hover:text-blue-800 font-medium">Classify Job</a>
+                <a href="/#recommend" class="text-blue-600 hover:text-blue-800 font-medium">Get Recommendations</a>
+                <a href="/metrics" class="text-blue-600 hover:text-blue-800 font-medium">Metrics</a>
+            </div>
+        </div>
+    </nav>
+    <div class="w-full max-w-4xl bg-white shadow-lg rounded-lg p-8">
+        <h1 class="text-3xl font-semibold text-gray-800 mb-6 text-center">Job Classifier and Recommender</h1>
+        {% if error %}
+            <p class="text-red-600 mb-4 text-center">{{ error }}</p>
+        {% endif %}
+        <div class="mb-8">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Classify a Job Posting</h2>
+            <form action="/classify_form" method="post" class="space-y-4">
+                <textarea id="job_description" name="job_description" rows="5" placeholder="Enter job description..." class="w-full p-4 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">{{ request.form.get('job_description', '') }}</textarea>
+                <button type="submit" class="w-full bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition duration-300">Classify</button>
+            </form>
+        </div>
+        <div>
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Get Job Recommendations</h2>
+            <form action="/recommend" method="post" class="space-y-4">
+                <textarea id="resume" name="resume" rows="5" placeholder="Enter your resume..." class="w-full p-4 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500">{{ request.form.get('resume', '') }}</textarea>
+                <button type="submit" class="w-full bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 transition duration-300">Recommend</button>
+            </form>
+        </div>
+        <p class="mt-4 text-center"><a href="/" class="text-blue-600 hover:text-blue-800">Simple Classification Interface</a></p>
+    </div>
 </body>
 </html>

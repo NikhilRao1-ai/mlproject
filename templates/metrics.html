@@ -1,23 +1,47 @@
 
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Model Metrics</title>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-    <h1>Model Metrics</h1>
-    {% if error %}
-        <p style="color: red;">{{ error }}</p>
-    {% else %}
-        <h2>Classification Metrics</h2>
-        <p>Precision: {{ classification_metrics.precision }}</p>
-        <p>Recall: {{ classification_metrics.recall }}</p>
-        <p>F1-Score: {{ classification_metrics.f1_score }}</p>
-        <h2>Recommendation Metrics</h2>
-        <p>Precision: {{ recommendation_metrics.precision }}</p>
-        <p>Recall: {{ recommendation_metrics.recall }}</p>
-        <p>F1-Score: {{ recommendation_metrics.f1_score }}</p>
-    {% endif %}
-    <a href="/home">Back to Home</a>
+<body class="min-h-screen bg-gradient-to-r from-blue-500 to-purple-600 flex flex-col items-center justify-center p-6">
+    <nav class="w-full max-w-4xl bg-white shadow-lg rounded-lg p-4 mb-6">
+        <div class="flex justify-between items-center">
+            <h1 class="text-2xl font-bold text-gray-800">Job Matcher Tool</h1>
+            <div class="space-x-4">
+                <a href="/home" class="text-blue-600 hover:text-blue-800 font-medium">Home</a>
+                <a href="/#classify" class="text-blue-600 hover:text-blue-800 font-medium">Classify Job</a>
+                <a href="/#recommend" class="text-blue-600 hover:text-blue-800 font-medium">Get Recommendations</a>
+                <a href="/metrics" class="text-blue-600 hover:text-blue-800 font-medium">Metrics</a>
+            </div>
+        </div>
+    </nav>
+    <div class="w-full max-w-4xl bg-white shadow-lg rounded-lg p-8">
+        <h1 class="text-3xl font-semibold text-gray-800 mb-6 text-center">Model Metrics</h1>
+        {% if error %}
+            <p class="text-red-600 mb-4 text-center">{{ error }}</p>
+        {% else %}
+            <div class="mb-8">
+                <h2 class="text-2xl font-semibold text-gray-800 mb-4">Classification Metrics</h2>
+                <div class="p-4 bg-blue-50 rounded-lg">
+                    <p class="text-gray-600">Precision: <span class="font-medium text-blue-600">{{ classification_metrics.precision }}</span></p>
+                    <p class="text-gray-600">Recall: <span class="font-medium text-blue-600">{{ classification_metrics.recall }}</span></p>
+                    <p class="text-gray-600">F1-Score: <span class="font-medium text-blue-600">{{ classification_metrics.f1_score }}</span></p>
+                </div>
+            </div>
+            <div>
+                <h2 class="text-2xl font-semibold text-gray-800 mb-4">Recommendation Metrics</h2>
+                <div class="p-4 bg-purple-50 rounded-lg">
+                    <p class="text-gray-600">Precision: <span class="font-medium text-purple-600">{{ recommendation_metrics.precision }}</span></p>
+                    <p class="text-gray-600">Recall: <span class="font-medium text-purple-600">{{ recommendation_metrics.recall }}</span></p>
+                    <p class="text-gray-600">F1-Score: <span class="font-medium text-purple-600">{{ recommendation_metrics.f1_score }}</span></p>
+                </div>
+            </div>
+        {% endif %}
+        <a href="/home" class="block mt-4 text-blue-600 hover:text-blue-800 text-center">Back to Home</a>
+    </div>
 </body>
 </html>
