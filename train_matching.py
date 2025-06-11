@@ -579,9 +579,9 @@ if __name__ == "__main__":
             })
             matcher.save_data(sample_jobs)
         job_df = matcher.load_data()
-    if not job_df.empty:
-        matcher.train_classifier(job_df)
-    matcher.train_matching()
+    #if not job_df.empty:
+     #   matcher.train_classifier(job_df)
+    #matcher.train_matching()
     from waitress import serve
     logger.info("Starting Waitress server on 0.0.0.0:5000")
     serve(app, host='0.0.0.0', port=5000, threads=4)
