@@ -1,0 +1,23 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Model Metrics</title>
+</head>
+<body>
+    <h1>Model Metrics</h1>
+    {% if error %}
+        <p style="color: red;">{{ error }}</p>
+    {% else %}
+        <h2>Classification Metrics</h2>
+        <p>Precision: {{ classification_metrics.precision }}</p>
+        <p>Recall: {{ classification_metrics.recall }}</p>
+        <p>F1-Score: {{ classification_metrics.f1_score }}</p>
+        <h2>Recommendation Metrics</h2>
+        <p>Precision: {{ recommendation_metrics.precision }}</p>
+        <p>Recall: {{ recommendation_metrics.recall }}</p>
+        <p>F1-Score: {{ recommendation_metrics.f1_score }}</p>
+    {% endif %}
+    <a href="/home">Back to Home</a>
+</body>
+</html>
