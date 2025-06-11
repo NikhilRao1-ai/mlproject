@@ -5,7 +5,7 @@ import string
 import sqlite3
 import os
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report
+from sklearn.metrics import classification_report, precision_score, recall_score, f1_score
 from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.models import Sequential
@@ -37,9 +37,11 @@ class JobMatcher:
         self.max_length = max_length
         self.label_encoder = LabelEncoder()
         self.cnn_model = None
+        self.matching_model = None
         self.db_path = db_path
         self.num_classes = None
         self.model_path = 'models/cnn_classifier.keras'
+        self.matching_model_path = 'models/matching_model.keras'
         self.tokenizer_path = 'models/tokenizer.pkl'
         self.encoder_path = 'models/label_encoder.pkl'
         self.job_listings = [
@@ -53,6 +55,34 @@ class JobMatcher:
             ("SEO Specialist needed with experience in keyword research.", "Marketing"),
             ("Doctor needed for hospital with 5 years of experience.", "Healthcare")
         ]
+        # Sample resume-job pairs for training the matching model
+        self.resume_job_pairs = [
+            # Positive matches (label=1)
+            ("Python developer with 3 years experience in machine learning.", 
+             "Software Engineer position requiring Python and machine learning skills.", 1),
+            ("Experienced in SEO and digital marketing strategies.", 
+             "Marketing Manager needed with experience in SEO.", 1),
+            ("Nurse with 5 years of patient care experience.", 
+             "Nurse Practitioner required with patient care experience.", 1),
+            ("JavaScript developer skilled in React and Node.js.", 
+             "Web Developer role requiring JavaScript and React.", 1),
+            ("Content writer with social media expertise.", 
+             "Content Writer for marketing team, skilled in social media.", 1),
+            # Negative matches (label=0)
+            ("Python developer with 3 years experience in machine learning.", 
+             "Marketing Manager needed with experience in SEO.", 0),
+            ("Experienced in SEO and digital marketing strategies.", 
+             "Nurse Practitioner required with patient care experience.", 0),
+            ("Nurse with 5 years of patient care experience.", 
+             "Software Engineer position requiring Python and machine learning skills.", 0),
+            ("JavaScript developer skilled in React and Node.js.", 
+             "Content Writer for marketing team, skilled in social media.", 0),
+            ("Content writer with social media expertise.", 
+             "Doctor needed for hospital with 5 years of experience.", 0),
+        ]
+        # Store metrics for display
+        self.classification_metrics = None
+        self.recommendation_metrics = None
 
     def clean_text(self, text):
         if not isinstance(text, str) or not text.strip():
@@ -110,6 +140,18 @@ class JobMatcher:
         model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
         return model
 
+    def build_matching_model(self, vocab_size):
+        model = Sequential([
+            Embedding(vocab_size, 128, input_length=self.max_length * 2),
+            Conv1D(128, 5, activation='relu'),
+            GlobalMaxPooling1D(),
+            Dense(64, activation='relu'),
+            Dropout(0.5),
+            Dense(1, activation='sigmoid')
+        ])
+        model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+        return model
+
     def train_classifier(self, job_df):
         if len(job_df) < 10:
             logger.warning("Limited data may lead to poor model performance. Add more jobs.")
@@ -124,6 +166,7 @@ class JobMatcher:
         y = to_categorical(y, num_classes=self.num_classes)
         
         X_train, X_test, y_train, y_test = train_test_split(job_padded, y, test_size=0.2, random_state=42)
+        logger.info(f"Training samples: {len(X_train)}, Test samples: {len(X_test)}")
         
         self.cnn_model = self.build_cnn_model(self.num_classes, len(self.tokenizer.word_index) + 1)
         self.cnn_model.fit(
@@ -138,10 +181,53 @@ class JobMatcher:
         y_pred = self.cnn_model.predict(X_test, verbose=0)
         y_pred_classes = np.argmax(y_pred, axis=1)
         y_test_classes = np.argmax(y_test, axis=1)
+        report = classification_report(y_test_classes, y_pred_classes, target_names=self.label_encoder.classes_, zero_division=0, output_dict=True)
         logger.info("\n📊 Classification Report:")
         logger.info(classification_report(y_test_classes, y_pred_classes, target_names=self.label_encoder.classes_, zero_division=0))
         
+        self.classification_metrics = {
+            'precision': round(report['weighted avg']['precision'], 2),
+            'recall': round(report['weighted avg']['recall'], 2),
+            'f1_score': round(report['weighted avg']['f1-score'], 2)
+        }
         self.save_model()
+
+    def train_matching(self):
+        resumes, jobs, labels = zip(*self.resume_job_pairs)
+        all_texts = list(resumes) + list(jobs)
+        self.tokenizer.fit_on_texts(all_texts)
+        resume_sequences = self.tokenizer.texts_to_sequences(resumes)
+        job_sequences = self.tokenizer.texts_to_sequences(jobs)
+        resume_padded = pad_sequences(resume_sequences, maxlen=self.max_length, padding='post', truncating='post')
+        job_padded = pad_sequences(job_sequences, maxlen=self.max_length, padding='post', truncating='post')
+        X = np.hstack((job_padded, resume_padded))
+        y = np.array(labels)
+        
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        logger.info(f"Matching Model - Training samples: {len(X_train)}, Test samples: {len(X_test)}")
+        
+        self.matching_model = self.build_matching_model(len(self.tokenizer.word_index) + 1)
+        self.matching_model.fit(
+            X_train, y_train,
+            epochs=10,
+            batch_size=4,
+            validation_split=0.2,
+            verbose=1,
+            callbacks=[EarlyStopping(patience=3, restore_best_weights=True)]
+        )
+        
+        y_pred = (self.matching_model.predict(X_test, verbose=0) > 0.5).astype(int)
+        precision = precision_score(y_test, y_pred, zero_division=0)
+        recall = recall_score(y_test, y_pred, zero_division=0)
+        f1 = f1_score(y_test, y_pred, zero_division=0)
+        logger.info(f"Recommendation Metrics: Precision={precision:.2f}, Recall={recall:.2f}, F1-Score={f1:.2f}")
+        
+        self.recommendation_metrics = {
+            'precision': round(precision, 2),
+            'recall': round(recall, 2),
+            'f1_score': round(f1, 2)
+        }
+        self.matching_model.save(self.matching_model_path)
 
     def save_model(self):
         os.makedirs('models', exist_ok=True)
@@ -177,11 +263,21 @@ class JobMatcher:
         return self.label_encoder.inverse_transform([category_id])[0]
 
     def predict_match(self, job_description, resume):
+        if not hasattr(self, 'matching_model') or self.matching_model is None:
+            try:
+                self.matching_model = tf.keras.models.load_model(self.matching_model_path)
+                with open(self.tokenizer_path, 'rb') as f:
+                    self.tokenizer = joblib.load(f)
+            except Exception as e:
+                logger.error(f"Error loading matching model: {e}")
+                job_padded = self.preprocess_text(job_description)
+                resume_padded = self.preprocess_text(resume)
+                from sklearn.metrics.pairwise import cosine_similarity
+                return cosine_similarity(job_padded, resume_padded)[0][0]
         job_padded = self.preprocess_text(job_description)
         resume_padded = self.preprocess_text(resume)
-        # Simple cosine similarity as a fallback since matching_model is not trained
-        from sklearn.metrics.pairwise import cosine_similarity
-        score = cosine_similarity(job_padded, resume_padded)[0][0]
+        combined_input = np.hstack((job_padded, resume_padded))
+        score = self.matching_model.predict(combined_input, verbose=0)[0][0]
         return score
 
     def recommend(self, resume):
@@ -205,6 +301,7 @@ def classify():
                     <textarea name="description" placeholder="Enter job description"></textarea><br>
                     <input type="submit" value="Classify">
                 </form>
+                <p><a href="/home">Full Interface</a></p>
             ''')
         try:
             category = matcher.classify_job(desc)
@@ -213,6 +310,7 @@ def classify():
                 <p>Description: {{ desc }}</p>
                 <p>Category: {{ category }}</p>
                 <a href="/">Back</a>
+                <p><a href="/home">Full Interface</a></p>
             ''', desc=desc, category=category)
         except Exception as e:
             logger.error(f"Classification error: {e}")
@@ -223,6 +321,7 @@ def classify():
                     <textarea name="description" placeholder="Enter job description">{{ desc }}</textarea><br>
                     <input type="submit" value="Classify">
                 </form>
+                <p><a href="/home">Full Interface</a></p>
             ''', error=str(e), desc=desc)
     return render_template_string('''
         <h1>Job Classification</h1>
@@ -230,6 +329,7 @@ def classify():
             <textarea name="description" placeholder="Enter job description"></textarea><br>
             <input type="submit" value="Classify">
         </form>
+        <p><a href="/home">Full Interface</a></p>
     ''')
 
 # Flask routes (Code 1)
@@ -265,6 +365,16 @@ def recommend():
         logger.error(f"Recommendation error: {e}")
         return render_template('index.html', error=f"An error occurred: {str(e)}")
 
+# Metrics endpoint
+@app.route('/metrics')
+def metrics():
+    if matcher.classification_metrics is None or matcher.recommendation_metrics is None:
+        return render_template('metrics.html', error="Metrics not available. Please ensure models are trained.")
+    return render_template('metrics.html', 
+        classification_metrics=matcher.classification_metrics,
+        recommendation_metrics=matcher.recommendation_metrics
+    )
+
 # Save HTML templates
 os.makedirs('templates', exist_ok=True)
 index_html = """
@@ -291,6 +401,7 @@ index_html = """
         <input type="submit" value="Submit">
     </form>
     <p><a href="/">Simple Classification Interface</a></p>
+    <p><a href="/metrics">View Metrics</a></p>
 </body>
 </html>
 """
@@ -327,12 +438,39 @@ recommend_html = """
 </html>
 """
 
+metrics_html = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Model Metrics</title>
+</head>
+<body>
+    <h1>Model Metrics</h1>
+    {% if error %}
+        <p style="color: red;">{{ error }}</p>
+    {% else %}
+        <h2>Classification Metrics</h2>
+        <p>Precision: {{ classification_metrics.precision }}</p>
+        <p>Recall: {{ classification_metrics.recall }}</p>
+        <p>F1-Score: {{ classification_metrics.f1_score }}</p>
+        <h2>Recommendation Metrics</h2>
+        <p>Precision: {{ recommendation_metrics.precision }}</p>
+        <p>Recall: {{ recommendation_metrics.recall }}</p>
+        <p>F1-Score: {{ recommendation_metrics.f1_score }}</p>
+    {% endif %}
+    <a href="/home">Back to Home</a>
+</body>
+</html>
+"""
+
 with open('templates/index.html', 'w') as f:
     f.write(index_html)
 with open('templates/result.html', 'w') as f:
     f.write(result_html)
 with open('templates/recommend.html', 'w') as f:
     f.write(recommend_html)
+with open('templates/metrics.html', 'w') as f:
+    f.write(metrics_html)
 
 # Instantiate JobMatcher
 matcher = JobMatcher()
@@ -443,7 +581,7 @@ if __name__ == "__main__":
         job_df = matcher.load_data()
     if not job_df.empty:
         matcher.train_classifier(job_df)
-    # Use waitress instead of app.run()
+    matcher.train_matching()
     from waitress import serve
     logger.info("Starting Waitress server on 0.0.0.0:5000")
-    serve(app, host='0.0.0.0', port=5000)
+    serve(app, host='0.0.0.0', port=5000, threads=4)
